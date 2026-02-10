@@ -136,7 +136,8 @@ main_loop:
     mov byte [rdi], 0
 
     xor rax, rax
-    mov rdi, tail
+    mov rdi, fmt
+    mov rsi, tail
     call printf
 
     xor rax, rax
@@ -186,7 +187,7 @@ main:
     sub rsp, 8
 
     call init
-    ;call main_loop
+    call main_loop
 
     add rsp, 8
     pop rbp

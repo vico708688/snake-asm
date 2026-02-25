@@ -6,28 +6,29 @@ DEFAULT rel ; relative addresses
 EXTERN printf
 EXTERN fflush
 EXTERN stdout
+EXTERN exit
 
 %define width 64
 %define height 32
 
-section .data
-    c_dr        db "┌" ; 0xE2,0x94,0x8C
-    c_dl        db "┐" ; 0xE2,0x94,0x90
-    l_h         db "─" ; 0xE2,0x94,0x80
-    l_v         db "│"
-    c_ur        db "└"
-    c_ul        db "┘"
-    body        db 0xE2,0x96,0x88
+section .rodata
+    c_dr        db 0xE2,0x94,0x8C,0
+    c_dl        db 0xE2,0x94,0x90,0
+    l_h         db 0xE2,0x94,0x80,0
+    l_v         db 0xE2,0x94,0x82,0
+    c_ur        db 0xE2,0x94,0x94,0
+    c_ul        db 0xE2,0x94,0x98,0
+    body        db 0xE2,0x96,0x88,0
 
-    fmt         db "%s",0
+    fmt         db "%s%s%s",0
 
-    new_line    db 13,10,0
+    new_line    db 10,0
 
     hide_cursor db 27,"[?25l",0 ; 27 : escape key in decimal
     show_cursor db 27,"[?25h",0
 
     home_cursor db 27,"[32;16H",0
-    end_cursor  db 27,"[34;64H",0
+    end_cursor  db 27,"[36;70H",0
 
 section .bss
     buffer   resb 4096 ; buffer de la grille
@@ -45,12 +46,13 @@ section .text
 draw_grid:
     ; creation of a long string containing the entire grid
 
-    mov rdi, buffer
+    lea rdi, [buffer]
 
     ; first line
     mov rcx, width ; nb de caractères sur une ligne
     mov eax, dword [c_dr] ; eax car "┌" a une longueur de 3 bytes, il nous faut donc au minimum 4 bytes
-    stosd ; "ajoute" c_dr à la chaine de caractère
+    stosd ; "ajoute" c_dr à la chaine de caractère (copie le registre eax dans la cellule mémoire à
+          ; l'adresse es:di (es=extra segment) et incrémente di de 4 (dword))
     dec rdi ; compense le byte en trop de eax ("┌" a une longueur de 3 bytes, pas 4, il faut donc reculer de 1 byte)
     mov eax, dword [l_h]
 
@@ -98,7 +100,13 @@ r2: ; last line
     mov eax, dword [c_ul]
     stosd
 
-    mov byte [rdi],0 ; null-terminated string
+    inc rdi ; il faut maintenant compenser le byte écrit en trop (pas forcément nécessaire puisque c_ul est terminé par 0)
+    mov byte [rdi],0 ; null-terminated string -> met 0 dans l'octet stocké à la position rdi en mémoire
+                     ; puisqu'on veut écrire en mémoire, il faut préciser sur combien d'octets, ex :
+                     ; byte: 1
+                     ; word: 2
+                     ; long: 4 (int), 8 (float)
+                     ; quad: 8
 
     ; affichage de la grille    
     mov rdi, buffer
@@ -111,9 +119,9 @@ init:
     cld ; met le flag DF à 0 (incrémentation du registre di par stosd)
 
     ; hide cursor
-    ;mov rdi, hide_cursor
-    ;xor rax, rax
-    ;call printf
+    mov rdi, hide_cursor
+    xor rax, rax
+    call printf
 
     call draw_grid
 
@@ -126,13 +134,15 @@ init:
 main_loop:
     ; update snake pos
     xor rax, rax
-    mov rdi, home_cursor
+    mov rdi, fmt
+    mov rsi, home_cursor
     call printf
 
     mov rdi, tail
     mov rsi, body
     mov rcx, 3
     rep movsb ; copie un octet de l'adresse de si dans di
+    inc rdi
     mov byte [rdi], 0
 
     xor rax, rax
@@ -147,48 +157,27 @@ main_loop:
 
     ret
 
-
-exit:
-    ; show cursor
+end_proc:
+    ; shows cursor places cursor at the end of the code
     xor rax, rax
-    mov rdi, show_cursor
-    call printf
-
-    ; place cursor at the end of the code
-    xor rax, rax
-    mov rdi, end_cursor
-    call printf
+    mov rdi, fmt
+    mov rsi, show_cursor
+    mov rdx, end_cursor
+    mov rcx, new_line
+    call printf ; pas besoin de fflush car le buffer du terminal est flush lors de : exit, fflush, new line '\n'
 
     xor rax, rax
-    mov rdi, new_line
-    call printf
-
-    xor rax, rax
-    mov rdi, [rel stdout]
-    call fflush
-
-    mov rax, 1
-    mov rdi, [rel stdout]
-    mov rsi, new_line
-    mov rdx, 3
-    syscall
-
-    xor rax, rax
-    mov rdi, [rel stdout]
-    call fflush
-
-    mov rax, 60
     xor rdi, rdi
-    syscall
+    call exit
 
 main:
     push rbp
     mov rbp, rsp
-    sub rsp, 8
+    sub rsp, 16 ; ABI SysV demande l'alignement de la stack sur 16 octets avant un appel à call, pas 8
 
     call init
     call main_loop
 
-    add rsp, 8
+    add rsp, 16
     pop rbp
-    jmp exit
+    jmp end_proc

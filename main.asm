@@ -3,12 +3,6 @@ BITS 64 ; précise l'architecture à NASM
 GLOBAL main
 DEFAULT rel ; relative addresses
 
-EXTERN printf
-EXTERN scanf
-EXTERN fflush
-EXTERN stdout
-EXTERN exit
-
 %define width 64
 %define height 32
 
@@ -38,13 +32,6 @@ section .rodata
 section .bss
     buffer   resb 4096 ; buffer de la grille
     tail     resb 4
-    head     resb 1
-    snake_x  resb 1
-    snake_y  resb 1
-    snake_vx resb 1
-    snake_vy resb 1
-    apple_x  resb 1
-    apple_y  resb 1
     playing  resb 0
 
 section .text
@@ -115,9 +102,11 @@ r2: ; last line
                      ; quad: 8
 
     ; affichage de la grille    
-    mov rdi, buffer
-    xor rax, rax
-    call printf
+    mov rax, 1
+    mov rdi, 0
+    mov rsi, buffer
+    mov rdx, 4096
+    syscall
 
     ret
 
@@ -125,21 +114,20 @@ init:
     cld ; met le flag DF à 0 (incrémentation du registre di par stosd)
 
     ; hide cursor
-    mov rdi, hide_cursor
-    xor rax, rax
-    call printf
+    mov rax, 1
+    mov rdi, 0
+    mov rsi, hide_cursor
+    mov rdx, 7
+    syscall
 
     call draw_grid
 
     ; met le curseur à la position (0,0)
-    xor rax, rax
-    mov rdi, fmt_str
+    mov rax, 1
+    mov rdi, 0
     mov rsi, home_cursor
-    call printf
-
-    xor rax, rax
-    mov rdi, [rel stdout] ; ATTENTION : addresse relative se trouvant en mémoire ([])
-    call fflush
+    mov rdx, 4
+    syscall
 
     ret
 
@@ -152,10 +140,11 @@ main_loop:
     ; mov rsi, 
 
 
-    xor rax, rax
-    mov rdi, fmt_str
+    mov rax, 1
+    mov rdi, 0
     mov rsi, home_cursor
-    call printf
+    mov rdx, 4
+    syscall
 
     mov rdi, tail
     mov rsi, body
@@ -164,14 +153,11 @@ main_loop:
     inc rdi
     mov byte [rdi], 0
 
-    xor rax, rax
-    mov rdi, fmt_chr
+    mov rax, 1
+    mov rdi, 0
     mov rsi, tail
-    call printf
-
-    xor rax, rax
-    mov rdi, [rel stdout]
-    call fflush
+    mov rdx, 4
+    syscall
 
     ; update apple pos
 
@@ -184,19 +170,17 @@ main_loop:
 
 ; add menu
 start_game:
-    xor rax, rax
-    mov rdi, fmt_str
+    mov rax, 1
+    mov rdi, 0
     mov rsi, start_cursor
-    call printf
+    mov rdx, 9
+    syscall
 
-    xor rax, rax
-    mov rdi, fmt_str
+    mov rax, 1
+    mov rdi, 0
     mov rsi, body
-    call printf
-
-    xor rax, rax
-    mov rdi, [rel stdout]
-    call fflush
+    mov rdx, 4
+    syscall
 
     ; on lance la partie
     inc byte [playing]
@@ -208,16 +192,27 @@ end_game:
 
 end_proc:
     ; shows cursor places cursor at the end of the code
-    xor rax, rax
-    mov rdi, fmt_end
+    mov rax, 1
+    mov rdi, 0
     mov rsi, show_cursor
-    mov rdx, end_cursor
-    mov rcx, new_line
-    call printf ; pas besoin de fflush car le buffer du terminal est flush lors de : exit, fflush, new line '\n'
+    mov rdx, 7
+    syscall
 
-    xor rax, rax
+    mov rax, 1
+    mov rdi, 0
+    mov rsi, end_cursor
+    mov rdx, 9
+    syscall
+
+    mov rax, 1
+    mov rdi, 0
+    mov rsi, new_line
+    mov rdx, 2
+    syscall
+
+    mov rax, 60
     xor rdi, rdi
-    call exit
+    syscall
 
 main:
     push rbp

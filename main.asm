@@ -4,6 +4,7 @@ GLOBAL main
 DEFAULT rel ; relative addresses
 
 EXTERN printf
+EXTERN scanf
 EXTERN fflush
 EXTERN stdout
 EXTERN exit
@@ -20,15 +21,19 @@ section .rodata
     c_ul        db 0xE2,0x94,0x98,0
     body        db 0xE2,0x96,0x88,0
 
-    fmt         db "%s%s%s",0
+    fmt_end     db "%s%s%s",0
+    fmt_chr     db "%c",0
+    fmt_int     db "%d",0
+    fmt_str     db "%s",0
 
     new_line    db 10,0
 
     hide_cursor db 27,"[?25l",0 ; 27 : escape key in decimal
     show_cursor db 27,"[?25h",0
 
-    home_cursor db 27,"[32;16H",0
-    end_cursor  db 27,"[36;70H",0
+    home_cursor db 27,"[H",0
+    start_cursor db 27,"[18;33H",0
+    end_cursor  db 27,"[35;64H",0
 
 section .bss
     buffer   resb 4096 ; buffer de la grille
@@ -40,6 +45,7 @@ section .bss
     snake_vy resb 1
     apple_x  resb 1
     apple_y  resb 1
+    playing  resb 0
 
 section .text
 
@@ -125,6 +131,12 @@ init:
 
     call draw_grid
 
+    ; met le curseur à la position (0,0)
+    xor rax, rax
+    mov rdi, fmt_str
+    mov rsi, home_cursor
+    call printf
+
     xor rax, rax
     mov rdi, [rel stdout] ; ATTENTION : addresse relative se trouvant en mémoire ([])
     call fflush
@@ -133,34 +145,71 @@ init:
 
 main_loop:
     ; update snake pos
+
+    ; key-listener
+    ; xor rax, rax ; apparemment plus court: xor eax, eax et met automatiquement les MSB à 0
+    ; mov rdi, fmt_int
+    ; mov rsi, 
+
+
     xor rax, rax
-    mov rdi, fmt
+    mov rdi, fmt_str
     mov rsi, home_cursor
     call printf
 
     mov rdi, tail
     mov rsi, body
-    mov rcx, 3
-    rep movsb ; copie un octet de l'adresse de si dans di
+    mov rcx, 1
+    rep stosb ; copie un octet de l'adresse de si dans di, cx fois
     inc rdi
     mov byte [rdi], 0
 
     xor rax, rax
-    mov rdi, fmt
+    mov rdi, fmt_chr
     mov rsi, tail
     call printf
 
     xor rax, rax
     mov rdi, [rel stdout]
     call fflush
+
     ; update apple pos
 
+
+    ; tant qu'on est pas mort, on joue
+    mov rax, playing
+    cmp rax, 1 ; ZF = 1 si rax - 1 == 0  => (rax == 1 => playing)
+    jnz end_game
+    jmp main_loop
+
+; add menu
+start_game:
+    xor rax, rax
+    mov rdi, fmt_str
+    mov rsi, start_cursor
+    call printf
+
+    xor rax, rax
+    mov rdi, fmt_str
+    mov rsi, body
+    call printf
+
+    xor rax, rax
+    mov rdi, [rel stdout]
+    call fflush
+
+    ; on lance la partie
+    inc byte [playing]
     ret
+
+end_game:
+    nop
+    jmp end_proc
 
 end_proc:
     ; shows cursor places cursor at the end of the code
     xor rax, rax
-    mov rdi, fmt
+    mov rdi, fmt_end
     mov rsi, show_cursor
     mov rdx, end_cursor
     mov rcx, new_line
@@ -176,6 +225,7 @@ main:
     sub rsp, 16 ; ABI SysV demande l'alignement de la stack sur 16 octets avant un appel à call, pas 8
 
     call init
+    call start_game
     call main_loop
 
     add rsp, 16

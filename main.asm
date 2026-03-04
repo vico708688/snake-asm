@@ -1,6 +1,10 @@
 
 BITS 64 ; précise l'architecture à NASM
 GLOBAL main
+
+; permet d'activer ou désactiver l'affichage des touches claviers immédiatement
+EXTERN tcgetattr, tcsetattr
+
 DEFAULT rel ; relative addresses
 
 %define width 64
@@ -15,11 +19,6 @@ section .rodata
     c_ul        db 0xE2,0x94,0x98,0
     body        db 0xE2,0x96,0x88,0
 
-    fmt_end     db "%s%s%s",0
-    fmt_chr     db "%c",0
-    fmt_int     db "%d",0
-    fmt_str     db "%s",0
-
     new_line    db 10,0
 
     hide_cursor db 27,"[?25l",0 ; 27 : escape key in decimal
@@ -29,10 +28,14 @@ section .rodata
     start_cursor db 27,"[18;33H",0
     end_cursor  db 27,"[35;64H",0
 
+%include "termios.inc"
 section .bss
-    buffer   resb 4096 ; buffer de la grille
-    tail     resb 4
-    playing  resb 0
+    buffer      resb 4096 ; buffer de la grille
+    oldtcattr   resb TERM_SIZE
+    newtcattr   resb TERM_SIZE
+    tail        resb 4
+    key_pressed resb 1
+    playing     resb 0
 
 section .text
 
@@ -120,7 +123,38 @@ init:
     mov rdx, 7
     syscall
 
+    ; désactivation de l'affichage des touches clavier
+    ; tcgetattr(0, &oldtcattr)
+    mov rdi, 0
+    lea rsi, [rel oldtcattr] ; important d'utiliser lea au lieu de mov, on veut un pointeur vers une adresse relative
+                             ; (flag no-pie) !!!
+    call tcgetattr ; sur les call : vérifier l'alignement de la stack sur 16 bytes
+
+    ; copie oldtcattr dans newtcattr
+    lea rsi, [rel oldtcattr]
+    lea rdi, [rel newtcattr]
+    mov rcx, TERM_SIZE
+    rep movsb
+
+    ; désactivation des flags ICANON ET ECHO
+    mov eax, [newtcattr + C_LFLAG]
+    and eax, ~(ICANON_V | ECHO_V)
+    mov [newtcattr + C_LFLAG], eax ; enregistrement des modifications
+
+    ;tcsetattr(0, 0, &newtcattr)
+    mov rdi, 0
+    mov rsi, 0
+    lea rdx, [rel newtcattr]
+    call tcsetattr
+
     call draw_grid
+
+    ; activation de l'affichage des touches clavier
+    ;tcsetattr(0, 0, &oldtcattr)
+    mov rdi, 0
+    mov rsi, 0
+    lea rdx, [rel oldtcattr]
+    call tcsetattr
 
     ; met le curseur à la position (0,0)
     mov rax, 1
@@ -135,10 +169,11 @@ main_loop:
     ; update snake pos
 
     ; key-listener
-    ; xor rax, rax ; apparemment plus court: xor eax, eax et met automatiquement les MSB à 0
-    ; mov rdi, fmt_int
-    ; mov rsi, 
-
+    xor rax, rax ; apparemment plus court: xor eax, eax et met automatiquement les MSB à 0
+    mov rdi, 0
+    mov rsi, key_pressed
+    mov rdx, 3 ; touches =>  ← : 0x445b1b , → : 0x435b1b , ↓ : 0x425b1b , ↑ : 0x415b1b
+    syscall
 
     mov rax, 1
     mov rdi, 0
@@ -215,14 +250,14 @@ end_proc:
     syscall
 
 main:
-    push rbp
+    push rbp ; décale la stack de 8
     mov rbp, rsp
-    sub rsp, 16 ; ABI SysV demande l'alignement de la stack sur 16 octets avant un appel à call, pas 8
+    sub rsp, 8 ; ABI SysV demande l'alignement de la stack sur 16 octets avant un appel à call
 
     call init
     call start_game
     call main_loop
 
-    add rsp, 16
+    add rsp, 8
     pop rbp
     jmp end_proc

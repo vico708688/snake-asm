@@ -2,3 +2,5 @@
 main
 /doc
 core
+get_size
+*.inc

@@ -11,22 +11,22 @@ DEFAULT rel ; relative addresses
 %define height 32
 
 section .rodata
-    c_dr        db 0xE2,0x94,0x8C,0
-    c_dl        db 0xE2,0x94,0x90,0
-    l_h         db 0xE2,0x94,0x80,0
-    l_v         db 0xE2,0x94,0x82,0
-    c_ur        db 0xE2,0x94,0x94,0
-    c_ul        db 0xE2,0x94,0x98,0
-    body        db 0xE2,0x96,0x88,0
+    c_dr         db 0xE2,0x94,0x8C,0
+    c_dl         db 0xE2,0x94,0x90,0
+    l_h          db 0xE2,0x94,0x80,0
+    l_v          db 0xE2,0x94,0x82,0
+    c_ur         db 0xE2,0x94,0x94,0
+    c_ul         db 0xE2,0x94,0x98,0
+    body         db 0xE2,0x96,0x88,0
 
-    new_line    db 10,0
+    new_line     db 10,0
 
-    hide_cursor db 27,"[?25l",0 ; 27 : escape key in decimal
-    show_cursor db 27,"[?25h",0
+    hide_cursor  db 27,"[?25l",0 ; 27 : escape key in decimal
+    show_cursor  db 27,"[?25h",0
 
-    home_cursor db 27,"[H",0
+    home_cursor  db 27,"[H",0
     start_cursor db 27,"[18;33H",0
-    end_cursor  db 27,"[35;64H",0
+    end_cursor   db 27,"[35;64H",0
 
 %include "termios.inc"
 section .bss
@@ -34,8 +34,8 @@ section .bss
     oldtcattr   resb TERM_SIZE
     newtcattr   resb TERM_SIZE
     tail        resb 4
-    key_pressed resb 1
-    playing     resb 0
+    key_pressed resb 3
+    playing     resb 1
 
 section .text
 
@@ -106,7 +106,7 @@ r2: ; last line
 
     ; affichage de la grille    
     mov rax, 1
-    mov rdi, 0
+    mov rdi, 1
     mov rsi, buffer
     mov rdx, 4096
     syscall
@@ -118,7 +118,7 @@ init:
 
     ; hide cursor
     mov rax, 1
-    mov rdi, 0
+    mov rdi, 1
     mov rsi, hide_cursor
     mov rdx, 7
     syscall
@@ -143,22 +143,15 @@ init:
 
     ;tcsetattr(0, 0, &newtcattr)
     mov rdi, 0
-    mov rsi, 0
+    mov rsi, TCSANOW_V
     lea rdx, [rel newtcattr]
     call tcsetattr
 
     call draw_grid
 
-    ; activation de l'affichage des touches clavier
-    ;tcsetattr(0, 0, &oldtcattr)
-    mov rdi, 0
-    mov rsi, 0
-    lea rdx, [rel oldtcattr]
-    call tcsetattr
-
     ; met le curseur à la position (0,0)
     mov rax, 1
-    mov rdi, 0
+    mov rdi, 1
     mov rsi, home_cursor
     mov rdx, 4
     syscall
@@ -175,21 +168,15 @@ main_loop:
     mov rdx, 3 ; touches =>  ← : 0x445b1b , → : 0x435b1b , ↓ : 0x425b1b , ↑ : 0x415b1b
     syscall
 
-    mov rax, 1
-    mov rdi, 0
-    mov rsi, home_cursor
-    mov rdx, 4
-    syscall
-
+    mov al, [body]
     mov rdi, tail
-    mov rsi, body
     mov rcx, 1
     rep stosb ; copie un octet de l'adresse de si dans di, cx fois
     inc rdi
     mov byte [rdi], 0
 
     mov rax, 1
-    mov rdi, 0
+    mov rdi, 1
     mov rsi, tail
     mov rdx, 4
     syscall
@@ -198,21 +185,22 @@ main_loop:
 
 
     ; tant qu'on est pas mort, on joue
-    mov rax, playing
-    cmp rax, 1 ; ZF = 1 si rax - 1 == 0  => (rax == 1 => playing)
-    jnz end_game
+    mov al, [playing]
+    dec byte [playing] ; DEBUG
+    cmp al, 0
+    jz end_game
     jmp main_loop
 
 ; add menu
 start_game:
     mov rax, 1
-    mov rdi, 0
+    mov rdi, 1
     mov rsi, start_cursor
     mov rdx, 9
     syscall
 
     mov rax, 1
-    mov rdi, 0
+    mov rdi, 1
     mov rsi, body
     mov rdx, 4
     syscall
@@ -228,22 +216,29 @@ end_game:
 end_proc:
     ; shows cursor places cursor at the end of the code
     mov rax, 1
-    mov rdi, 0
+    mov rdi, 1
     mov rsi, show_cursor
     mov rdx, 7
     syscall
 
     mov rax, 1
-    mov rdi, 0
+    mov rdi, 1
     mov rsi, end_cursor
     mov rdx, 9
     syscall
 
     mov rax, 1
-    mov rdi, 0
+    mov rdi, 1
     mov rsi, new_line
     mov rdx, 2
     syscall
+
+    ; activation de l'affichage des touches clavier
+    ; tcsetattr(0, 0, &oldtcattr)
+    mov rdi, 0
+    mov rsi, 0
+    lea rdx, [rel oldtcattr]
+    call tcsetattr
 
     mov rax, 60
     xor rdi, rdi
